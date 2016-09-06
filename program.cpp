@@ -2,45 +2,50 @@
 #include <string>
 #include <sstream>
 #include "tokenizer.h"
-#include "tinydir.h"
 
 #include <system.io.fileinfo.h>
+#include <system.io.directoryinfo.h>
 #include <system.io.path.h>
 
 using namespace std;
 using namespace System::IO;
 
-void listCodeFiles(const string& root, const string& relativePath, vector<string>& files, vector<string>& directories)
+void listCodeFiles(const DirectoryInfo& root, const string& relativePath, vector<FileInfo>& files, vector<DirectoryInfo>& directories)
 {
-    string path(Path::Combine(root, relativePath));
+    auto current = DirectoryInfo(Path::Combine(root.FullName(), relativePath));
 
-    tinydir_dir dir;
-    tinydir_open(&dir, path.c_str());
-
-    while (dir.has_next)
+    auto f = current.GetFiles();
+    for (auto itr = f.begin(); itr != f.end(); ++itr)
     {
-        tinydir_file file;
-        tinydir_readfile(&dir, &file);
+        auto file = FileInfo(*itr);
 
-        if (file.is_dir)
-        {
-            if (file.name[0] != '.')
-            {
-                directories.push_back(Path::Combine(path, file.name));
-                listCodeFiles(root, Path::Combine(relativePath, file.name), files, directories);
-            }
-        }
-        else
-        {
-            files.push_back(Path::Combine(path, file.name));
-        }
+        if (file.Name()[0] == '.') continue;
 
-        tinydir_next(&dir);
+        if (file.Extension() == ".cpp"
+                || file.Extension() == ".c"
+                || file.Extension() == ".hpp"
+                || file.Extension() == ".h")
+        {
+            files.push_back(file);
+        }
     }
+    auto d = current.GetDirectories();
+    for (auto itr = d.begin(); itr != d.end(); ++itr)
+    {
+        auto directory = DirectoryInfo(*itr);
 
-    tinydir_close(&dir);
+        if (directory.Name()[0] == '.') continue;
+
+        directories.push_back(directory);
+        listCodeFiles(root, Path::Combine(relativePath, directory.Name()), files, directories);
+    }
 }
 
+// test comment
+
+/* Multi line comment
+ * tweede line
+ */
 int main(int argc, char* argv[])
 {
     if (argc <= 1)
@@ -49,20 +54,30 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    vector<string> files;
-    vector<string> directories;
-    listCodeFiles(argv[1], "", files, directories);
+    auto root = DirectoryInfo(argv[1]);
+    vector<FileInfo> files;
+    vector<DirectoryInfo> directories;
+    listCodeFiles(root, "", files, directories);
 
     vector<string> headerfiles, codefiles;
     for (auto itr = files.cbegin(); itr != files.cend(); ++itr)
     {
         auto filename = *itr;
-        cout << filename << endl;
+        cout << filename.FullName() << endl;
     }
 
     for (auto itr = directories.cbegin(); itr != directories.cend(); ++itr)
     {
-        cout << *itr << endl;
+        auto directory = *itr;
+        cout << directory.FullName() << endl;
+    }
+
+    Tokenizer t("..\\code2cmake\\program.cpp");
+    auto tokens = t.AllTokens();
+    for (auto itr = tokens.begin(); itr != tokens.end(); ++itr)
+    {
+        auto token = *itr;
+        cout << token.token << " : type[" << token.type << "]" << endl;
     }
 
     return 0;

@@ -5,21 +5,44 @@
 #include <string>
 #include <fstream>
 
+namespace TokenTypes
+{
+enum eTokenTypes
+{
+    Comment,
+    String,
+    Operator,
+    Other
+};
+}
+
+class Token
+{
+public:
+    TokenTypes::eTokenTypes type;
+    std::string token;
+    int line;
+    int linepos;
+    int filepos;
+};
+
 class Tokenizer
 {
     std::ifstream _inputstream;
     char c;
-    void skipSpaces();
-    void nextChar();
-    std::vector<std::string> _alltokens;
+    int filepos;
+    int line;
+    int linepos;
+    std::vector<Token> _alltokens;
 
-    std::string returnToken(const std::string& token);
+    void proceed(int count = 1);
+    Token returnToken(const std::string& token, TokenTypes::eTokenTypes type = TokenTypes::Other);
 public:
     Tokenizer(const std::string& filename);
     virtual ~Tokenizer();
 
-    std::string NextToken();
-    const std::vector<std::string>& AllTokens();
+    Token NextToken();
+    const std::vector<Token>& AllTokens();
 };
 
 #endif // _TOKENIZER_H_
