@@ -2,11 +2,36 @@
 #include <fstream>
 #include <iostream>
 
-Tokenizer::Tokenizer(const std::string& filename)
-    : _inputstream(filename.c_str()), c('\0'), filepos(0), line(0), linepos(0)
+Token::Token()
+{ }
+
+Token::Token(const Token& other)
+    : type(other.type), token(other.token), line(other.line), linepos(other.linepos), filepos(other.filepos)
+{ }
+
+Token::Token(TokenTypes::eTokenTypes type, const std::string& token, int line, int linepos, int filepos)
+    : type(type), token(token), line(line), linepos(linepos), filepos(filepos)
+{ }
+
+Token::~Token()
+{ }
+
+Token& Token::operator = (const Token& other)
 {
-    if (this->_inputstream.good())
-        this->_inputstream.get(c);
+    this->type = other.type;
+    this->token = other.token;
+    this->line = other.line;
+    this->linepos = other.linepos;
+    this->filepos = other.filepos;
+
+    return *this;
+}
+
+Tokenizer::Tokenizer(const std::string& filename)
+    : _in(filename.c_str()), _ch('\0'), filepos(0), line(0), linepos(0)
+{
+    if (this->_in.good())
+        this->_in.get(this->_ch);
 }
 
 Tokenizer::~Tokenizer()
@@ -14,25 +39,20 @@ Tokenizer::~Tokenizer()
 
 void Tokenizer::proceed(int count)
 {
-    while (count-- > 0 && this->_inputstream.good())
+    while (count-- > 0 && this->_in.good())
     {
-        this->_inputstream.get(c);
+        this->_in.get(this->_ch);
         filepos++;
         linepos++;
-        if (c == '\n') { line++; linepos = 0; }
+        if (this->_ch == '\n') { line++; linepos = 0; }
     }
-    if (!this->_inputstream.good())
-        c = '\0';
+    if (!this->_in.good())
+        this->_ch = '\0';
 }
 
 Token Tokenizer::returnToken(const std::string& token, TokenTypes::eTokenTypes type)
 {
-    Token t;
-    t.type = type;
-    t.filepos = filepos;
-    t.line = line;
-    t.linepos = linepos;
-    t.token = token;
+    Token t(type, token, line, linepos, filepos);
 
     if (token != "")
     {
@@ -42,20 +62,16 @@ Token Tokenizer::returnToken(const std::string& token, TokenTypes::eTokenTypes t
     return t;
 }
 
-bool IsDelimChar(char c);
-bool IsOperatorChar(char c);
-bool IsGroupChar(char c, char& closeOn);
-
 Token Tokenizer::NextToken()
 {
     std::string token;
 
     // Skip all space characters
-    if (c <= ' ')
+    if (this->_ch <= ' ')
     {
-        while (this->_inputstream.good())
+        while (this->_in.good())
         {
-            if (c > ' ')
+            if (this->_ch > ' ')
                 break;
 
             this->proceed();
@@ -63,77 +79,77 @@ Token Tokenizer::NextToken()
     }
 
     // Handle comments
-    if (c == '/')
+    if (this->_ch == '/')
     {
-        char p = this->_inputstream.peek();
-        while (this->_inputstream.good())
+        char p = static_cast<char>(this->_in.peek());
+        while (this->_in.good())
         {
-            if (p == '/' && c == '\n')
+            if (p == '/' && this->_ch == '\n')
                 return returnToken(token, TokenTypes::Comment);
 
-            if (p == '*' && c == '*' && this->_inputstream.peek() == '/')
+            if (p == '*' && this->_ch == '*' && static_cast<char>(this->_in.peek()) == '/')
             {
                 this->proceed(); this->proceed();
                 token += "*/";
                 return returnToken(token, TokenTypes::Comment);
             }
 
-            token += c;
+            token += this->_ch;
             this->proceed();
         }
     }
 
     // Handle possible operators
-    if (IsOperatorChar(c) && IsOperatorChar(this->_inputstream.peek()))
+    if (Tokenizer::isOperatorChar(this->_ch) && Tokenizer::isOperatorChar(static_cast<char>(this->_in.peek())))
     {
-        while (IsOperatorChar(this->_inputstream.peek()))
+        while (Tokenizer::isOperatorChar(static_cast<char>(this->_in.peek())))
         {
-            token += c;
+            token += this->_ch;
             proceed();
         }
-        token += c;
+        token += this->_ch;
         proceed();
         return returnToken(token, TokenTypes::Operator);
     }
 
     // Handle group chars like quotes etc
     char e;
-    if (IsGroupChar(c, e))
+    if (Tokenizer::isGroupChar(this->_ch, e))
     {
-        token += c;
+        token += this->_ch;
         this->proceed();
-        while (this->_inputstream.good())
+        while (this->_in.good())
         {
-            if (c == e)
+            if (this->_ch == e)
             {
-                token += c;
+                token += this->_ch;
                 this->proceed();
                 return returnToken(token, TokenTypes::String);
             }
 
-            token += c;
+            token += this->_ch;
             this->proceed();
         }
     }
 
     // Handle delimiting characters
-    if (IsDelimChar(c))
+    if (Tokenizer::isDelimiterChar(this->_ch))
     {
-        std::string tok(1, c);
+        std::string tok(1, this->_ch);
         this->proceed();
         return returnToken(tok);
     }
 
     // Fill up the token until we see any delimiting characters
-    while (c != '\0')
+    while (this->_ch != '\0')
     {
-        if (IsDelimChar(c))
+        if (Tokenizer::isDelimiterChar(this->_ch))
         {
             return returnToken(token);
         }
         else
         {
-            token += c;
+            token += this->_ch;
             this->proceed();
         }
     }
@@ -143,7 +159,7 @@ Token Tokenizer::NextToken()
 
 const std::vector<Token>& Tokenizer::AllTokens()
 {
-    if (!this->_inputstream.eof())
+    if (!this->_in.eof())
     {
         auto token = NextToken();
         while (token.token != "")
@@ -155,56 +171,50 @@ const std::vector<Token>& Tokenizer::AllTokens()
     return this->_alltokens;
 }
 
-static char delimchars[] = { ' ',
-    '(', ')',
-    '[', ']',
-    '{', '}',
-    '<', '>',
-    '|', '\\', '/',
-    '.', ',', ';', ':',
-    '&', '$','?', '!',
-     '+', '=', '-', '*', '^', '~', '%'
+static char delimiterChars[] = { ' ',
+    '(', ')', '[', ']', '{', '}', '<', '>',
+    '|', '\\', '/', '&', '$',
+    '.', ',', ';', ':', '?', '!',
+    // '+', '=', '-', '*', '^', '~', '%'
 };
 
-static char groupchars[][2] = {
+bool Tokenizer::isDelimiterChar(char c)
+{
+    auto count = sizeof(delimiterChars);
+    for (unsigned int i = 0; i < count; i++)
+    {
+        if (delimiterChars[i] == c) return true;
+    }
+    return false;
+}
+
+static char operatorChars[] = {
+    '+', '=', '-', '*', '!', '<', '>', '&', '|', '^', ':'
+};
+
+bool Tokenizer::isOperatorChar(char c)
+{
+    auto count = sizeof(operatorChars);
+    for (unsigned int i = 0; i < count; i++)
+    {
+        if (operatorChars[i] == c) return true;
+    }
+    return false;
+}
+
+static char groupChars[][2] = {
     { '\"', '\"' },
     { '\'', '\'' }
 };
 
-static char operatorchars[] = {
-    '+', '=', '-', '*', '!', '<', '>', '&', '|', '^', ':'
-};
-
-bool IsDelimChar(char c)
+bool Tokenizer::isGroupChar(char c, char& closeOn)
 {
-    for (unsigned int i = 0; i < sizeof(delimchars); i++)
+    auto count = sizeof(groupChars) / 2;
+    for (unsigned int i = 0; i < count; i++)
     {
-        if (delimchars[i] == c)
-            return true;
-    }
-
-    return false;
-}
-
-bool IsOperatorChar(char c)
-{
-    for (unsigned int i = 0; i < sizeof(operatorchars); i++)
-    {
-        if (operatorchars[i] == c)
-            return true;
-    }
-
-    return false;
-}
-
-bool IsGroupChar(char c, char& closeOn)
-{
-    int count = sizeof(groupchars) / (sizeof(char) * 2);
-    for (int i = 0; i < count; i++)
-    {
-        if (groupchars[i][0] == c)
+        if (groupChars[i][0] == c)
         {
-            closeOn = groupchars[i][1];
+            closeOn = groupChars[i][1];
             return true;
         }
     }

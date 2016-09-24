@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
     for (auto itr = tokens.begin(); itr != tokens.end(); ++itr)
     {
         auto token = *itr;
-        cout << token.token << " : type[" << token.type << "]" << endl;
+        cout << "[" << token.type << "] " << token.token << endl;
     }
 
     return 0;
